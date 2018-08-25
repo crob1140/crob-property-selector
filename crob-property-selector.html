@@ -1,0 +1,132 @@
+<!doctype html>
+<!--
+  Copyright (c) 2018 Callum Robertson
+  
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+
+<!--
+  '<crob-property-selector>' is a utility component that can used to extract values from
+  a object.
+
+  This component ensures that any changes applied to the object are propagated to any
+  observers using the extracted value, and that any changes made to the extracted value
+  are written back to the object.
+-->
+<dom-module id="crob-property-selector">
+    <script>
+        Polymer({
+            is: "crob-property-selector",
+
+            properties: {
+                object: {
+                    type: Object,
+                    notify: true
+                },
+                property: {
+                    type: String
+                },
+                value: {
+                    type: Object,
+                    notify: true
+                }
+            },
+
+            observers: [
+                '_onObjectChanged(object.*)',
+                '_onPropertyChanged(property)',
+                '_onValueChanged(value)'
+            ],
+
+            /**
+             * Processes a change to the value property.
+             * 
+             * @param {object} value The new value of the property property
+             * @private
+             */
+            _onValueChanged(value) {
+                if (this._isDefined(this.object, this.property)) {
+                    // If the value was replaced, then copy it
+                    // over to the object
+                    this.set('object.' + this.property, value);
+                }
+            },
+
+            /**
+             * Processes a change to the object property or any of it's subproperties.
+             * 
+             * @param {string} changeRecord A change record affecting the object property
+             * or any of it's subproperties.
+             * @private
+             */
+            _onObjectChanged(changeRecord) {
+                var changePath = changeRecord.path;
+                if (changePath === 'object') {
+                    // If the object itself was replaced, then we need
+                    // to use our existing property on the new object to
+                    // get the new value
+                    if (this._isDefined(this.object, this.property)) {
+                        this.set('value', this.object[this.property]);
+                    }
+                } else if (changePath === "object." + this.property) {
+                    // If the object was replaced, then copy it
+                    // over to the value
+                    this.set("value", this.object[this.property]);
+                }
+            },
+
+            /**
+             * Processes a change to the property property.
+             * 
+             * @param {string} property The new value of the property property
+             * @private
+             */
+            _onPropertyChanged: function (property) {
+                this.unlinkPaths('value');
+                if (this._isDefined(property)) {
+                    // Set the value before linking the paths to avoid firing
+                    // an un-necessary change notification to the object path
+                    if (this._isDefined(this.object)) {
+                        this.set('value', this.object[property]);
+                    }
+
+                    // Link the paths of the object and the value so that
+                    // any path notifications for one is also fired for the other
+                    this.linkPaths('value', 'object.' + property);
+                }
+            },
+
+            /**
+             * Returns a flag indicating whether all of the given values are defined.
+             *
+             * @param {...object}  values The value(s) to check
+             * @returns {boolean} A flag indicating whether all of the given values are defined
+             * @private
+             */
+            _isDefined(...values) {
+                return !values.some(function (value) {
+                    return value === undefined || value === null;
+                });
+            },
+        });
+    </script>
+</dom-module>

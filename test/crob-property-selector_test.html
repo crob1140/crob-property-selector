@@ -1,0 +1,242 @@
+<!doctype html>
+<!--
+  Copyright (c) 2018 Callum Robertson
+  
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+-->
+
+<html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
+
+        <title>crob-property-selector test</title>
+
+        <script src="../../webcomponentsjs/webcomponents-loader.js"></script>
+        <script src="../../web-component-tester/browser.js"></script>
+
+        <link rel="import" href="../crob-property-selector.html">
+        <link rel="import" href="./change-observer.html">
+    </head>
+
+    <body>
+        <test-fixture id="BasicFixture">
+            <template>
+                <crob-property-selector></crob-property-selector>
+            </template>
+        </test-fixture>
+
+        <test-fixture id="ObservedFixture">
+            <template>
+                <dom-bind>
+                    <template>
+                        <crob-property-selector id="selector" property="property" object="{{object}}" value="{{value}}"></crob-property-selector>
+                        <change-observer id="observer" object="{{object}}" value="{{value}}"></change-observer>
+                    </template>
+                </dom-bind>
+            </template>
+        </test-fixture>
+
+        <script>
+            suite('<crob-property-selector>', () => {
+                suite('initialisation', () => {
+                    let propertySelector;
+                    setup(() => {
+                        propertySelector = fixture('BasicFixture');
+                    });
+
+                    test('the value is still undefined when only the object is set', () => {
+                        propertySelector.set('property', 'property');
+                        assert.isUndefined(propertySelector.value);
+                    });
+
+                    test('the value is still undefined when only the property is set', () => {
+                        propertySelector.set('object', {
+                            'property': 'value'
+                        });
+                        assert.isUndefined(propertySelector.value);
+                    });
+
+                    test('the value is initialised correctly when the property is set before the object', () => {
+                        propertySelector.set('property', 'property');
+                        propertySelector.set('object', {
+                            'property': 'value'
+                        });
+                        assert.equal(propertySelector.value, 'value');
+                    });
+
+                    test('the value is initialised correctly when the object is set before the property', () => {
+                        propertySelector.set('object', {
+                            'property': 'value'
+                        });
+                        propertySelector.set('property', 'property');
+                        assert.equal(propertySelector.value, 'value');
+                    });
+                });
+
+                suite('primitive values', () => {
+                    let domBind, observer, propertySelector;
+
+                    setup(() => {
+                        domBind = fixture('ObservedFixture');
+                        domBind.object = {
+                            "property": "initial-value"
+                        };
+
+                        propertySelector = domBind.$.selector;
+                        observer = domBind.$.observer;
+                        observer.onObjectChanged = sinon.spy();
+                        observer.onValueChanged = sinon.spy();
+                    });
+
+                    test('any change to the value is propagated to the object', () => {
+                        propertySelector.set('value', 'new-value');
+                        assert.equal(propertySelector.object.property, 'new-value');
+                    });
+
+                    test('any change to the object is propagated to the value', () => {
+                        propertySelector.set('object.property', 'new-value');
+                        assert.equal(propertySelector.value, 'new-value');
+                    });
+
+                    test('any external observers of the value are notified when the object is changed', () => {
+                        propertySelector.set('object.property', 'new-value');
+                        assert.equal(observer.value, 'new-value');
+                        assert.equal(observer.onValueChanged.callCount, 1, 'observer received the incorrect number of notifications');
+                        assert.equal(observer.onValueChanged.firstCall.args[0].path, 'value');
+                        assert.equal(observer.onValueChanged.firstCall.args[0].value, 'new-value');
+                    });
+
+                    test('any external observers of the object are notified when the value is changed', () => {
+                        propertySelector.set('value', 'new-value');
+                        assert.equal(observer.onObjectChanged.callCount, 1, 'observer received the incorrect number of notifications');
+                        assert.equal(observer.object.property, 'new-value');
+                        assert.equal(observer.onObjectChanged.firstCall.args[0].path, 'object.property');
+                        assert.equal(observer.onObjectChanged.firstCall.args[0].value, 'new-value');
+                    });
+                });
+
+                suite('array values', () => {
+                    let domBind, observer, propertySelector;
+
+                    setup(() => {
+                        domBind = fixture('ObservedFixture');
+                        domBind.object = {
+                            "property": ["1", "2", "3"]
+                        };
+
+                        propertySelector = domBind.$.selector;
+                        observer = domBind.$.observer;
+                        observer.onObjectChanged = sinon.spy();
+                        observer.onValueChanged = sinon.spy();
+                    });
+
+                    test('any external observers of the object are notified of splices to the value', () => {
+                        propertySelector.splice('object.property', 0, 3, "a", "b", "c");
+                        assert.sameMembers(observer.value, ["a", "b", "c"]);
+                        assert.equal(observer.onValueChanged.firstCall.args[0].path, 'value.splices');
+
+                        let indexSplices = observer.onValueChanged.firstCall.args[0].value.indexSplices;
+                        assert.isDefined(indexSplices);
+                        assert.equal(indexSplices.length, 1);
+                        assert.equal(indexSplices[0].index, 0);
+                        assert.sameMembers(indexSplices[0].removed, ['1', '2', '3']);
+                        assert.equal(indexSplices[0].addedCount, 3);
+                    });
+
+                    test('any external observers of the value are notified of splices to the property of the object', () => {
+                        propertySelector.splice('value', 0, 3, "a", "b", "c");
+                        assert.sameMembers(observer.object.property, ["a", "b", "c"]);
+                        assert.equal(observer.onObjectChanged.firstCall.args[0].path, 'object.property.splices');
+
+                        let indexSplices = observer.onObjectChanged.firstCall.args[0].value.indexSplices;
+                        assert.isDefined(indexSplices);
+                        assert.equal(indexSplices.length, 1);
+                        assert.equal(indexSplices[0].index, 0);
+                        assert.sameMembers(indexSplices[0].removed, ['1', '2', '3']);
+                        assert.equal(indexSplices[0].addedCount, 3);
+                    });
+                });
+
+                suite('object values', () => {
+                    let domBind, observer, propertySelector;
+
+                    setup(() => {
+                        domBind = fixture('ObservedFixture');
+                        domBind.object = {
+                            "property": {
+                                'prop': 'test',
+                                'items': ['1', '2', '3']
+                            }
+                        };
+
+                        propertySelector = domBind.$.selector;
+                        observer = domBind.$.observer;
+                        observer.onObjectChanged = sinon.spy();
+                        observer.onValueChanged = sinon.spy();
+                    });
+
+                    test('any external observers of the value are notified when a property of the object is changed', () => {
+                        propertySelector.set('object.property.prop', 'new-value');
+                        assert.equal(observer.value.prop, 'new-value');
+                        assert.equal(observer.onValueChanged.callCount, 1, 'observer received the incorrect number of notifications');
+                        assert.equal(observer.onValueChanged.firstCall.args[0].path, 'value.prop');
+                        assert.equal(observer.onValueChanged.firstCall.args[0].value, 'new-value');
+                    });
+
+                    test('any external observers of the object are notified when a property of the value is changed', () => {
+                        propertySelector.set('value.prop', 'new-value');
+                        assert.equal(observer.onObjectChanged.callCount, 1, 'observer received the incorrect number of notifications');
+                        assert.equal(observer.object.property.prop, 'new-value');
+                        assert.equal(observer.onObjectChanged.firstCall.args[0].path, 'object.property.prop');
+                        assert.equal(observer.onObjectChanged.firstCall.args[0].value, 'new-value');
+                    });
+
+                    test('any external observers of the value are notified when a nested array property of the object is spliced', () => {
+                        propertySelector.splice('object.property.items', 0, 3, "a", "b", "c");
+                        assert.sameMembers(observer.value.items, ["a", "b", "c"]);
+                        assert.equal(observer.onValueChanged.firstCall.args[0].path, 'value.items.splices');
+
+                        let indexSplices = observer.onValueChanged.firstCall.args[0].value.indexSplices;
+                        assert.isDefined(indexSplices);
+                        assert.equal(indexSplices.length, 1);
+                        assert.equal(indexSplices[0].index, 0);
+                        assert.sameMembers(indexSplices[0].removed, ['1', '2', '3']);
+                        assert.equal(indexSplices[0].addedCount, 3);
+                    });
+
+                    test('any external observers of the object are notified when a nested array property of the value is spliced', () => {
+                        propertySelector.splice('value.items', 0, 3, "a", "b", "c");
+                        assert.sameMembers(observer.object.property.items, ["a", "b", "c"]);
+                        assert.equal(observer.onObjectChanged.firstCall.args[0].path, 'object.property.items.splices');
+
+                        let indexSplices = observer.onObjectChanged.firstCall.args[0].value.indexSplices;
+                        assert.isDefined(indexSplices);
+                        assert.equal(indexSplices.length, 1);
+                        assert.equal(indexSplices[0].index, 0);
+                        assert.sameMembers(indexSplices[0].removed, ['1', '2', '3']);
+                        assert.equal(indexSplices[0].addedCount, 3);
+                    });
+                });
+            });
+        </script>
+    </body>
+</html>
